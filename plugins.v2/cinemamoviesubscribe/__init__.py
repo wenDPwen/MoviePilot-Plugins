@@ -33,7 +33,7 @@ class CinemaMovieSubscribe(_PluginBase):
     plugin_name = "院线电影订阅"
     plugin_desc = "自动发现国内、香港、澳门、台湾院线上映电影，媒体库不存在时自动添加电影订阅。"
     plugin_icon = "https://github.com/wenDPwen.png"
-    plugin_version = "1.1.2"
+    plugin_version = "1.1.3"
     plugin_author = "wen"
     author_url = "https://github.com/wenDPwen"
     plugin_config_prefix = "cinemamoviesubscribe_"
@@ -336,6 +336,8 @@ class CinemaMovieSubscribe(_PluginBase):
         history = sorted(history, key=lambda item: item.get("time") or "", reverse=True)
         cards = []
         for item in history[:100]:
+            poster = item.get("poster") or ""
+            title = item.get("title") or "未知电影"
             cards.append({
                 "component": "VCard",
                 "props": {"variant": "tonal"},
@@ -355,25 +357,38 @@ class CinemaMovieSubscribe(_PluginBase):
                         },
                     },
                     {
-                        "component": "VCardTitle",
-                        "props": {"class": "pa-2 pe-8 break-words whitespace-break-spaces"},
-                        "text": item.get("title") or "未知电影",
-                    },
-                    {
-                        "component": "VCardText",
-                        "props": {"class": "pa-2 pt-0"},
-                        "text": (
-                            f"动作：{item.get('action') or '-'} / "
-                            f"上映：{item.get('release_date') or '-'} / "
-                            f"类型：{item.get('genres') or '-'} / "
-                            f"地区：{item.get('region') or '-'} / "
-                            f"时间：{item.get('time') or '-'}"
-                        ),
-                    },
-                    {
-                        "component": "VCardText",
-                        "props": {"class": "pa-2 pt-0 text-caption"},
-                        "text": item.get("message") or "",
+                        "component": "div",
+                        "props": {"class": "d-flex justify-space-start flex-nowrap flex-row"},
+                        "content": [
+                            {
+                                "component": "div",
+                                "content": [{
+                                    "component": "VImg",
+                                    "props": {
+                                        "src": poster,
+                                        "height": 120,
+                                        "width": 80,
+                                        "aspect-ratio": "2/3",
+                                        "class": "object-cover shadow ring-gray-500",
+                                        "cover": True,
+                                    },
+                                }],
+                            },
+                            {
+                                "component": "div",
+                                "content": [
+                                    {
+                                        "component": "VCardTitle",
+                                        "props": {"class": "pa-1 pe-8 break-words whitespace-break-spaces"},
+                                        "text": title,
+                                    },
+                                    self.__history_text(f"订阅类型：{item.get('media_type') or '电影'}"),
+                                    self.__history_text(f"上映地区：{item.get('region') or '-'}"),
+                                    self.__history_text(f"上映时间：{item.get('release_date') or '-'}"),
+                                    self.__history_text(f"加入时间：{item.get('time') or '-'}"),
+                                ],
+                            },
+                        ],
                     },
                 ],
             })
@@ -633,6 +648,8 @@ class CinemaMovieSubscribe(_PluginBase):
             "title": mediainfo.title_year,
             "tmdbid": mediainfo.tmdb_id,
             "year": mediainfo.year,
+            "media_type": MediaType.MOVIE.value,
+            "poster": self.__poster_image(mediainfo),
             "release_date": release.get("release_date"),
             "region": release.get("region_name") or release.get("region"),
             "release_type": release.get("type_name"),
@@ -640,6 +657,21 @@ class CinemaMovieSubscribe(_PluginBase):
             "genres": "、".join(item.get("genres") or []),
             "message": message,
             "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+    @staticmethod
+    def __poster_image(mediainfo: MediaInfo) -> str:
+        try:
+            return mediainfo.get_poster_image() or ""
+        except Exception:
+            return getattr(mediainfo, "poster_path", None) or ""
+
+    @staticmethod
+    def __history_text(text: str) -> dict:
+        return {
+            "component": "VCardText",
+            "props": {"class": "pa-0 px-2"},
+            "text": text,
         }
 
     def __notify_summary(self, stats: dict, start_date: datetime.date, end_date: datetime.date):

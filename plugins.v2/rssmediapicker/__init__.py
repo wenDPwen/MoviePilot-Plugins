@@ -36,7 +36,7 @@ class RssMediaPicker(_PluginBase):
     plugin_name = "RSS资源择优下载"
     plugin_desc = "从RSS中识别影视资源，检查Emby媒体库是否已存在，并按大小与关键词策略择优下载。"
     plugin_icon = "https://github.com/wenDPwen.png"
-    plugin_version = "1.0.0"
+    plugin_version = "1.0.1"
     plugin_author = "wen"
     author_url = "https://github.com/wenDPwen"
     plugin_config_prefix = "rssmediapicker_"
@@ -296,9 +296,7 @@ class RssMediaPicker(_PluginBase):
         cards = []
         for item in history[:100]:
             title = item.get("title") or item.get("torrent_title") or "未知资源"
-            action = item.get("action") or "-"
-            size = self.__format_size(item.get("size") or 0)
-            msg = item.get("message") or ""
+            poster = item.get("poster") or ""
             cards.append({
                 "component": "VCard",
                 "props": {"variant": "tonal"},
@@ -318,22 +316,38 @@ class RssMediaPicker(_PluginBase):
                         },
                     },
                     {
-                        "component": "VCardTitle",
-                        "props": {"class": "pa-2 pe-8 break-words whitespace-break-spaces"},
-                        "text": title,
-                    },
-                    {
-                        "component": "VCardText",
-                        "props": {"class": "pa-2 pt-0"},
-                        "text": (
-                            f"动作：{action} / 候选：{item.get('candidate_count', 1)} / "
-                            f"大小：{size} / 时间：{item.get('time') or '-'}"
-                        ),
-                    },
-                    {
-                        "component": "VCardText",
-                        "props": {"class": "pa-2 pt-0 text-caption"},
-                        "text": msg,
+                        "component": "div",
+                        "props": {"class": "d-flex justify-space-start flex-nowrap flex-row"},
+                        "content": [
+                            {
+                                "component": "div",
+                                "content": [{
+                                    "component": "VImg",
+                                    "props": {
+                                        "src": poster,
+                                        "height": 120,
+                                        "width": 80,
+                                        "aspect-ratio": "2/3",
+                                        "class": "object-cover shadow ring-gray-500",
+                                        "cover": True,
+                                    },
+                                }],
+                            },
+                            {
+                                "component": "div",
+                                "content": [
+                                    {
+                                        "component": "VCardTitle",
+                                        "props": {"class": "pa-1 pe-8 break-words whitespace-break-spaces"},
+                                        "text": title,
+                                    },
+                                    self.__history_text(f"订阅类型：{item.get('media_type') or item.get('type') or '-'}"),
+                                    self.__history_text(f"上映地区：{item.get('region') or '-'}"),
+                                    self.__history_text(f"上映时间：{item.get('release_date') or '-'}"),
+                                    self.__history_text(f"加入时间：{item.get('time') or '-'}"),
+                                ],
+                            },
+                        ],
                     },
                 ],
             })
@@ -622,13 +636,45 @@ class RssMediaPicker(_PluginBase):
             "title": f"{mediainfo.title_year} {meta.season_episode or ''}".strip(),
             "torrent_title": selected.get("title"),
             "type": mediainfo.type.value if mediainfo.type else "",
+            "media_type": mediainfo.type.value if mediainfo.type else "",
             "year": mediainfo.year,
             "tmdbid": mediainfo.tmdb_id,
+            "poster": self.__poster_image(mediainfo),
+            "region": self.__media_region(mediainfo),
+            "release_date": getattr(mediainfo, "release_date", None) or "",
             "size": selected.get("size") or 0,
             "candidate_count": len(group_items),
             "source": selected.get("source"),
             "message": message,
             "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+    @staticmethod
+    def __poster_image(mediainfo: MediaInfo) -> str:
+        try:
+            return mediainfo.get_poster_image() or ""
+        except Exception:
+            return getattr(mediainfo, "poster_path", None) or ""
+
+    @staticmethod
+    def __media_region(mediainfo: MediaInfo) -> str:
+        values = getattr(mediainfo, "production_countries", None) or getattr(mediainfo, "origin_country", None) or []
+        regions = []
+        for item in values:
+            if isinstance(item, dict):
+                name = item.get("name") or item.get("iso_3166_1") or item.get("id")
+            else:
+                name = item
+            if name:
+                regions.append(str(name))
+        return "、".join(regions)
+
+    @staticmethod
+    def __history_text(text: str) -> dict:
+        return {
+            "component": "VCardText",
+            "props": {"class": "pa-0 px-2"},
+            "text": text,
         }
 
     def __notify_summary(self, stats: dict):

@@ -33,7 +33,7 @@ class CinemaMovieSubscribe(_PluginBase):
     plugin_name = "院线电影订阅"
     plugin_desc = "自动发现国内、香港、澳门、台湾院线上映电影，媒体库不存在时自动添加电影订阅。"
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/Moviepilot_A.png"
-    plugin_version = "1.1.0"
+    plugin_version = "1.1.1"
     plugin_author = "wen"
     author_url = "https://github.com/wenDPwen"
     plugin_config_prefix = "cinemamoviesubscribe_"
@@ -60,6 +60,8 @@ class CinemaMovieSubscribe(_PluginBase):
     _include: str = ""
     _exclude: str = "网络电影|网大|爱奇艺|优酷|腾讯视频|芒果TV|B站|哔哩哔哩|西瓜视频|抖音|线上首映|网络首映|流媒体首映|平台上线|独播上线|上线播出"
     _include_limited: bool = False
+    _exclude_rerelease: bool = True
+    _max_release_year_gap: int = 2
     _emby_servers: List[str] = []
 
     _region_names = {
@@ -123,6 +125,8 @@ class CinemaMovieSubscribe(_PluginBase):
             self._include = config.get("include") or ""
             self._exclude = config.get("exclude") or self._exclude
             self._include_limited = bool(config.get("include_limited"))
+            self._exclude_rerelease = bool(config.get("exclude_rerelease", True))
+            self._max_release_year_gap = max(0, min(self.__to_int(config.get("max_release_year_gap"), 2), 20))
             self._emby_servers = self.__as_list(config.get("emby_servers"))
 
         if self._onlyonce:
@@ -298,6 +302,13 @@ class CinemaMovieSubscribe(_PluginBase):
                         "component": "VRow",
                         "content": [
                             self.__col_switch("include_limited", "包含点映/小规模院线", 4),
+                            self.__col_switch("exclude_rerelease", "排除复映/重映老片", 4),
+                            self.__col_text("max_release_year_gap", "最大年份差", "默认 2，寒战这类老片重映会跳过", 4),
+                        ],
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
                             self.__col_switch("clear", "清理历史记录", 4),
                         ],
                     },
@@ -321,6 +332,8 @@ class CinemaMovieSubscribe(_PluginBase):
             "include": "",
             "exclude": self._exclude,
             "include_limited": False,
+            "exclude_rerelease": True,
+            "max_release_year_gap": 2,
             "emby_servers": [],
         }
 
@@ -562,18 +575,41 @@ class CinemaMovieSubscribe(_PluginBase):
                 if not rdate:
                     continue
                 if start_date <= rdate <= end_date:
-                    matched.append({
+                    candidate = {
                         "region": region,
                         "region_name": self._region_names.get(region, region),
                         "release_date": rdate.strftime("%Y-%m-%d"),
                         "type": rtype,
                         "type_name": self._release_type_names.get(rtype, str(rtype)),
                         "note": release.get("note") or "",
-                    })
+                    }
+                    if self._exclude_rerelease and self.__is_rerelease(detail=detail, release=candidate):
+                        title = detail.get("title") or detail.get("name") or detail.get("id")
+                        logger.info(
+                            f"{title} 命中复映/重映过滤，跳过："
+                            f"{candidate.get('region_name')} {candidate.get('release_date')} "
+                            f"{candidate.get('note') or ''}"
+                        )
+                        continue
+                    matched.append(candidate)
         if not matched:
             return None
         matched.sort(key=lambda item: item.get("release_date") or "")
         return matched[0]
+
+    def __is_rerelease(self, detail: dict, release: dict) -> bool:
+        note = release.get("note") or ""
+        if note and re.search(
+                r"重映|复映|重发|重上|重制|修复|周年|纪念|re[-\s]?release|rerelease|restor|remaster|anniversary|4k",
+                note,
+                re.IGNORECASE):
+            return True
+
+        original_date = self.__parse_date(detail.get("release_date") or "")
+        current_date = self.__parse_date(release.get("release_date") or "")
+        if not original_date or not current_date:
+            return False
+        return current_date.year - original_date.year > self._max_release_year_gap
 
     def __media_exists(self, mediainfo: MediaInfo) -> Tuple[bool, str]:
         servers = self._emby_servers or [None]
@@ -604,6 +640,7 @@ class CinemaMovieSubscribe(_PluginBase):
             "release_date": release.get("release_date"),
             "region": release.get("region_name") or release.get("region"),
             "release_type": release.get("type_name"),
+            "release_note": release.get("note"),
             "genres": "、".join(item.get("genres") or []),
             "message": message,
             "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -650,6 +687,8 @@ class CinemaMovieSubscribe(_PluginBase):
             "include": self._include,
             "exclude": self._exclude,
             "include_limited": self._include_limited,
+            "exclude_rerelease": self._exclude_rerelease,
+            "max_release_year_gap": self._max_release_year_gap,
             "emby_servers": self._emby_servers,
         })
 

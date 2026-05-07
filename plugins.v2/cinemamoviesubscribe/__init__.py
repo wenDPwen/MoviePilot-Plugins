@@ -33,7 +33,7 @@ class CinemaMovieSubscribe(_PluginBase):
     plugin_name = "院线电影订阅"
     plugin_desc = "自动发现国内、香港、澳门、台湾院线上映电影，媒体库不存在时自动添加电影订阅。"
     plugin_icon = "https://github.com/wenDPwen.png"
-    plugin_version = "1.1.3"
+    plugin_version = "1.1.4"
     plugin_author = "wen"
     author_url = "https://github.com/wenDPwen"
     plugin_config_prefix = "cinemamoviesubscribe_"
@@ -334,9 +334,13 @@ class CinemaMovieSubscribe(_PluginBase):
             }]
 
         history = sorted(history, key=lambda item: item.get("time") or "", reverse=True)
+        history_changed = False
         cards = []
         for item in history[:100]:
-            poster = item.get("poster") or ""
+            poster = self.__history_poster(item)
+            if poster and not item.get("poster"):
+                item["poster"] = poster
+                history_changed = True
             title = item.get("title") or "未知电影"
             cards.append({
                 "component": "VCard",
@@ -362,17 +366,7 @@ class CinemaMovieSubscribe(_PluginBase):
                         "content": [
                             {
                                 "component": "div",
-                                "content": [{
-                                    "component": "VImg",
-                                    "props": {
-                                        "src": poster,
-                                        "height": 120,
-                                        "width": 80,
-                                        "aspect-ratio": "2/3",
-                                        "class": "object-cover shadow ring-gray-500",
-                                        "cover": True,
-                                    },
-                                }],
+                                "content": [self.__poster_view(poster)],
                             },
                             {
                                 "component": "div",
@@ -382,7 +376,9 @@ class CinemaMovieSubscribe(_PluginBase):
                                         "props": {"class": "pa-1 pe-8 break-words whitespace-break-spaces"},
                                         "text": title,
                                     },
-                                    self.__history_text(f"订阅类型：{item.get('media_type') or '电影'}"),
+                                    self.__history_text(
+                                        f"订阅类型：{self.__history_type(item.get('media_type') or '电影', item.get('genres'))}"
+                                    ),
                                     self.__history_text(f"上映地区：{item.get('region') or '-'}"),
                                     self.__history_text(f"上映时间：{item.get('release_date') or '-'}"),
                                     self.__history_text(f"加入时间：{item.get('time') or '-'}"),
@@ -392,6 +388,9 @@ class CinemaMovieSubscribe(_PluginBase):
                     },
                 ],
             })
+
+        if history_changed:
+            self.save_data("history", history)
 
         return [{
             "component": "div",
@@ -665,6 +664,77 @@ class CinemaMovieSubscribe(_PluginBase):
             return mediainfo.get_poster_image() or ""
         except Exception:
             return getattr(mediainfo, "poster_path", None) or ""
+
+    def __history_poster(self, item: dict) -> str:
+        poster = item.get("poster") or ""
+        if poster:
+            return poster
+
+        tmdbid = item.get("tmdbid") or item.get("key")
+        if not tmdbid:
+            return ""
+        try:
+            detail = TmdbApi().get_info(mtype=MediaType.MOVIE, tmdbid=tmdbid)
+            if not detail:
+                return ""
+            return self.__poster_image(MediaInfo(tmdb_info=detail))
+        except Exception as err:
+            logger.warning(f"获取院线电影历史海报失败：TMDB:{tmdbid} - {str(err)}")
+            return ""
+
+    @staticmethod
+    def __poster_view(poster: str) -> dict:
+        content = [{
+            "component": "VImg",
+            "props": {
+                "src": poster,
+                "height": 120,
+                "width": 80,
+                "aspect-ratio": "2/3",
+                "class": "object-cover shadow ring-gray-500",
+                "cover": True,
+            },
+        }]
+        if poster:
+            content.append({
+                "component": "VDialog",
+                "props": {"activator": "parent", "max-width": 520},
+                "content": [{
+                    "component": "VCard",
+                    "content": [
+                        {"component": "VDialogCloseBtn"},
+                        {
+                            "component": "VImg",
+                            "props": {
+                                "src": poster,
+                                "max-height": "80vh",
+                                "width": "100%",
+                            },
+                        },
+                    ],
+                }],
+            })
+        return {
+            "component": "div",
+            "props": {"class": "cursor-pointer"},
+            "content": content,
+        }
+
+    @staticmethod
+    def __history_type(media_type: str, genres: str = "") -> str:
+        genres = CinemaMovieSubscribe.__display_genres(genres)
+        return f"{media_type}-{genres}" if genres else media_type
+
+    @staticmethod
+    def __display_genres(genres: str = "") -> str:
+        if not genres:
+            return ""
+        names = []
+        for item in str(genres).replace(",", "、").split("、"):
+            name = item.strip().replace("动画/动漫", "动漫")
+            if name and name not in names:
+                names.append(name)
+        return "、".join(names)
 
     @staticmethod
     def __history_text(text: str) -> dict:

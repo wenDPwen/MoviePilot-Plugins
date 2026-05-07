@@ -17,6 +17,7 @@ from app.core.metainfo import MetaInfo
 from app.helper.mediaserver import MediaServerHelper
 from app.helper.rss import RssHelper
 from app.log import logger
+from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.plugins import _PluginBase
 from app.schemas import ExistMediaInfo, NotificationType
 from app.schemas.types import MediaType, SystemConfigKey
@@ -36,7 +37,7 @@ class RssMediaPicker(_PluginBase):
     plugin_name = "RSS资源择优下载"
     plugin_desc = "从RSS中识别影视资源，检查Emby媒体库是否已存在，并按大小与关键词策略择优下载。"
     plugin_icon = "https://github.com/wenDPwen.png"
-    plugin_version = "1.0.1"
+    plugin_version = "1.0.2"
     plugin_author = "wen"
     author_url = "https://github.com/wenDPwen"
     plugin_config_prefix = "rssmediapicker_"
@@ -62,6 +63,36 @@ class RssMediaPicker(_PluginBase):
     _emby_servers: List[str] = []
     _downloader: str = ""
     _save_path: str = ""
+
+    _genre_names = {
+        28: "动作",
+        12: "冒险",
+        16: "动漫",
+        35: "喜剧",
+        80: "犯罪",
+        99: "纪录",
+        18: "剧情",
+        10751: "家庭",
+        14: "奇幻",
+        36: "历史",
+        27: "恐怖",
+        10402: "音乐",
+        9648: "悬疑",
+        10749: "爱情",
+        878: "科幻",
+        10770: "电视电影",
+        53: "惊悚",
+        10752: "战争",
+        37: "西部",
+        10759: "动作冒险",
+        10762: "儿童",
+        10763: "新闻",
+        10764: "真人秀",
+        10765: "科幻奇幻",
+        10766: "肥皂剧",
+        10767: "脱口秀",
+        10768: "战争政治",
+    }
 
     def init_plugin(self, config: dict = None):
         self.stop_service()
@@ -293,10 +324,14 @@ class RssMediaPicker(_PluginBase):
             }]
 
         history = sorted(history, key=lambda item: item.get("time") or "", reverse=True)
+        history_changed = False
         cards = []
         for item in history[:100]:
             title = item.get("title") or item.get("torrent_title") or "未知资源"
-            poster = item.get("poster") or ""
+            poster = self.__history_poster(item)
+            if poster and not item.get("poster"):
+                item["poster"] = poster
+                history_changed = True
             cards.append({
                 "component": "VCard",
                 "props": {"variant": "tonal"},
@@ -321,17 +356,7 @@ class RssMediaPicker(_PluginBase):
                         "content": [
                             {
                                 "component": "div",
-                                "content": [{
-                                    "component": "VImg",
-                                    "props": {
-                                        "src": poster,
-                                        "height": 120,
-                                        "width": 80,
-                                        "aspect-ratio": "2/3",
-                                        "class": "object-cover shadow ring-gray-500",
-                                        "cover": True,
-                                    },
-                                }],
+                                "content": [self.__poster_view(poster)],
                             },
                             {
                                 "component": "div",
@@ -341,7 +366,9 @@ class RssMediaPicker(_PluginBase):
                                         "props": {"class": "pa-1 pe-8 break-words whitespace-break-spaces"},
                                         "text": title,
                                     },
-                                    self.__history_text(f"订阅类型：{item.get('media_type') or item.get('type') or '-'}"),
+                                    self.__history_text(
+                                        f"订阅类型：{self.__history_type(item.get('media_type') or item.get('type') or '-', item.get('genres'))}"
+                                    ),
                                     self.__history_text(f"上映地区：{item.get('region') or '-'}"),
                                     self.__history_text(f"上映时间：{item.get('release_date') or '-'}"),
                                     self.__history_text(f"加入时间：{item.get('time') or '-'}"),
@@ -351,6 +378,9 @@ class RssMediaPicker(_PluginBase):
                     },
                 ],
             })
+
+        if history_changed:
+            self.save_data("history", history)
 
         return [{
             "component": "div",
@@ -637,6 +667,7 @@ class RssMediaPicker(_PluginBase):
             "torrent_title": selected.get("title"),
             "type": mediainfo.type.value if mediainfo.type else "",
             "media_type": mediainfo.type.value if mediainfo.type else "",
+            "genres": self.__media_genres(mediainfo),
             "year": mediainfo.year,
             "tmdbid": mediainfo.tmdb_id,
             "poster": self.__poster_image(mediainfo),
@@ -656,6 +687,75 @@ class RssMediaPicker(_PluginBase):
         except Exception:
             return getattr(mediainfo, "poster_path", None) or ""
 
+    def __history_poster(self, item: dict) -> str:
+        poster = item.get("poster") or ""
+        if poster:
+            return poster
+
+        tmdbid = item.get("tmdbid")
+        if not tmdbid:
+            return ""
+        mtype = self.__history_media_type(item)
+        if not mtype:
+            return ""
+        try:
+            detail = TmdbApi().get_info(mtype=mtype, tmdbid=tmdbid)
+            if not detail:
+                return ""
+            return self.__poster_image(MediaInfo(tmdb_info=detail))
+        except Exception as err:
+            logger.warning(f"获取RSS历史海报失败：TMDB:{tmdbid} - {str(err)}")
+            return ""
+
+    @staticmethod
+    def __history_media_type(item: dict) -> Optional[MediaType]:
+        media_type = item.get("media_type") or item.get("type")
+        if not media_type and item.get("key"):
+            media_type = str(item.get("key")).split("|", 1)[0]
+        if media_type == MediaType.MOVIE.value:
+            return MediaType.MOVIE
+        if media_type == MediaType.TV.value:
+            return MediaType.TV
+        return None
+
+    @staticmethod
+    def __poster_view(poster: str) -> dict:
+        content = [{
+            "component": "VImg",
+            "props": {
+                "src": poster,
+                "height": 120,
+                "width": 80,
+                "aspect-ratio": "2/3",
+                "class": "object-cover shadow ring-gray-500",
+                "cover": True,
+            },
+        }]
+        if poster:
+            content.append({
+                "component": "VDialog",
+                "props": {"activator": "parent", "max-width": 520},
+                "content": [{
+                    "component": "VCard",
+                    "content": [
+                        {"component": "VDialogCloseBtn"},
+                        {
+                            "component": "VImg",
+                            "props": {
+                                "src": poster,
+                                "max-height": "80vh",
+                                "width": "100%",
+                            },
+                        },
+                    ],
+                }],
+            })
+        return {
+            "component": "div",
+            "props": {"class": "cursor-pointer"},
+            "content": content,
+        }
+
     @staticmethod
     def __media_region(mediainfo: MediaInfo) -> str:
         values = getattr(mediainfo, "production_countries", None) or getattr(mediainfo, "origin_country", None) or []
@@ -668,6 +768,41 @@ class RssMediaPicker(_PluginBase):
             if name:
                 regions.append(str(name))
         return "、".join(regions)
+
+    @classmethod
+    def __media_genres(cls, mediainfo: MediaInfo) -> str:
+        names = []
+        for item in getattr(mediainfo, "genres", None) or []:
+            if isinstance(item, dict):
+                name = cls._genre_names.get(cls.__to_int(item.get("id"))) or item.get("name")
+            else:
+                name = cls._genre_names.get(cls.__to_int(item)) or item
+            cls.__append_genre(names, name)
+
+        if not names:
+            for item in getattr(mediainfo, "genre_ids", None) or []:
+                cls.__append_genre(names, cls._genre_names.get(cls.__to_int(item)))
+        return "、".join(names)
+
+    @classmethod
+    def __history_type(cls, media_type: str, genres: str = "") -> str:
+        genres = cls.__display_genres(genres)
+        return f"{media_type}-{genres}" if genres else media_type
+
+    @staticmethod
+    def __display_genres(genres: str = "") -> str:
+        if not genres:
+            return ""
+        names = []
+        for item in str(genres).replace(",", "、").split("、"):
+            RssMediaPicker.__append_genre(names, item)
+        return "、".join(names)
+
+    @staticmethod
+    def __append_genre(names: List[str], name: Any):
+        name = str(name or "").strip().replace("动画/动漫", "动漫")
+        if name and name not in names:
+            names.append(name)
 
     @staticmethod
     def __history_text(text: str) -> dict:

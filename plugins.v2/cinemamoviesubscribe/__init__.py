@@ -32,7 +32,7 @@ class CinemaMovieSubscribe(_PluginBase):
 
     plugin_name = "院线电影订阅"
     plugin_desc = "自动发现国内、香港、澳门、台湾院线上映电影，媒体库不存在时自动添加电影订阅。"
-    plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/Moviepilot_A.png"
+    plugin_icon = "https://github.com/wenDPwen.png"
     plugin_version = "1.1.2"
     plugin_author = "wen"
     author_url = "https://github.com/wenDPwen"

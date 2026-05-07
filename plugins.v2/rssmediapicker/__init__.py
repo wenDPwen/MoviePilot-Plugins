@@ -35,7 +35,7 @@ class RssMediaPicker(_PluginBase):
 
     plugin_name = "RSS资源择优下载"
     plugin_desc = "从RSS中识别影视资源，检查Emby媒体库是否已存在，并按大小与关键词策略择优下载。"
-    plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/rss.png"
+    plugin_icon = "https://github.com/wenDPwen.png"
     plugin_version = "1.0.0"
     plugin_author = "wen"
     author_url = "https://github.com/wenDPwen"

@@ -4,7 +4,7 @@
     "description": "从RSS中识别影视资源，检查Emby媒体库是否已存在，并按大小与关键词策略择优下载。",
     "labels": "RSS,下载,Emby,TMDB",
     "version": "1.0.0",
-    "icon": "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/rss.png",
+    "icon": "https://github.com/wenDPwen.png",
     "author": "wen",
     "level": 2,
     "history": {
@@ -16,7 +16,7 @@
     "description": "自动发现国内、香港、澳门、台湾院线上映电影，可按类型限制订阅，媒体库不存在时自动添加电影订阅。",
     "labels": "院线,电影,订阅,类型,动漫,TMDB,Emby",
     "version": "1.1.2",
-    "icon": "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/Moviepilot_A.png",
+    "icon": "https://github.com/wenDPwen.png",
     "author": "wen",
     "level": 2,
     "history": {

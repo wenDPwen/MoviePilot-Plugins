@@ -33,7 +33,7 @@ class CinemaMovieSubscribe(_PluginBase):
     plugin_name = "院线电影订阅"
     plugin_desc = "自动发现国内、香港、澳门、台湾院线上映电影，媒体库不存在时自动添加电影订阅。"
     plugin_icon = "https://raw.githubusercontent.com/wenDPwen/MoviePilot-Plugins/main/icons/movie.jpg"
-    plugin_version = "1.1.5"
+    plugin_version = "1.1.7"
     plugin_author = "wen"
     author_url = "https://github.com/wenDPwen"
     author_icon = "https://raw.githubusercontent.com/wenDPwen/MoviePilot-Plugins/main/icons/author.jpg"
@@ -41,6 +41,8 @@ class CinemaMovieSubscribe(_PluginBase):
     plugin_config_prefix = "cinemamoviesubscribe_"
     plugin_order = 31
     auth_level = 2
+    _processed_key = "processed_keys"
+    _processed_actions = ["subscribed", "exists", "sub_exists"]
 
     _scheduler: Optional[BackgroundScheduler] = None
 
@@ -62,6 +64,8 @@ class CinemaMovieSubscribe(_PluginBase):
     _include: str = ""
     _exclude: str = "网络电影|网大|爱奇艺|优酷|腾讯视频|芒果TV|B站|哔哩哔哩|西瓜视频|抖音|线上首映|网络首映|流媒体首映|平台上线|独播上线|上线播出"
     _include_limited: bool = False
+    _exclude_rerelease: bool = True
+    _max_release_year_gap: int = 2
     _emby_servers: List[str] = []
 
     _region_names = {
@@ -125,7 +129,9 @@ class CinemaMovieSubscribe(_PluginBase):
             self._include = config.get("include") or ""
             self._exclude = config.get("exclude") or self._exclude
             self._include_limited = bool(config.get("include_limited"))
-            self._emby_servers = self.__as_list(config.get("emby_servers"))
+            self._exclude_rerelease = bool(config.get("exclude_rerelease", True))
+            self._max_release_year_gap = max(0, min(self.__to_int(config.get("max_release_year_gap"), 2), 20))
+            self._emby_servers = self.__as_list(config.get("emby_servers"), upper=False)
 
         if self._onlyonce:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
@@ -424,11 +430,9 @@ class CinemaMovieSubscribe(_PluginBase):
     def check(self):
         with lock:
             logger.info("开始执行院线电影订阅 ...")
-            history: List[dict] = [] if self._clearflag else (self.get_data("history") or [])
-            processed = {
-                item.get("key") for item in history
-                if item.get("action") in ["subscribed", "exists", "sub_exists"] and item.get("key")
-            }
+            stored_history: List[dict] = self.get_data("history") or []
+            history: List[dict] = [] if self._clearflag else stored_history
+            processed = self.__processed_keys(history=stored_history)
 
             start_date, end_date = self.__date_window()
             movies = self.__discover_movies(start_date=start_date, end_date=end_date)
@@ -436,6 +440,7 @@ class CinemaMovieSubscribe(_PluginBase):
                 logger.info("未发现符合条件的院线电影")
                 self._clearflag = False
                 self.save_data("history", history)
+                self.__save_processed_keys(processed=processed)
                 return
 
             stats = {
@@ -459,6 +464,7 @@ class CinemaMovieSubscribe(_PluginBase):
                     exists, exists_message = self.__media_exists(mediainfo=mediainfo)
                     if exists:
                         stats["exists"] += 1
+                        processed.add(key)
                         history.append(self.__history_item(
                             action="exists",
                             item=item,
@@ -469,6 +475,7 @@ class CinemaMovieSubscribe(_PluginBase):
                     meta = self.__meta_for_movie(mediainfo)
                     if subscribechain.exists(mediainfo=mediainfo, meta=meta):
                         stats["sub_exists"] += 1
+                        processed.add(key)
                         history.append(self.__history_item(
                             action="sub_exists",
                             item=item,
@@ -487,6 +494,7 @@ class CinemaMovieSubscribe(_PluginBase):
                     )
                     if sid:
                         stats["subscribed"] += 1
+                        processed.add(key)
                         history.append(self.__history_item(
                             action="subscribed",
                             item=item,
@@ -506,6 +514,7 @@ class CinemaMovieSubscribe(_PluginBase):
                     logger.error(f"处理院线电影失败：{str(err)} - {traceback.format_exc()}")
 
             self.save_data("history", history[-500:])
+            self.__save_processed_keys(processed=processed)
             self._clearflag = False
             self.__notify_summary(stats=stats, start_date=start_date, end_date=end_date)
             logger.info(f"院线电影订阅执行完成：{stats}")
@@ -586,7 +595,7 @@ class CinemaMovieSubscribe(_PluginBase):
                     "type_name": self._release_type_names.get(rtype, str(rtype)),
                     "note": release.get("note") or "",
                 }
-                if self.__is_rerelease(release=candidate):
+                if self.__is_rerelease(detail=detail, release=candidate):
                     title = detail.get("title") or detail.get("name") or detail.get("id")
                     logger.info(
                         f"{title} 命中复映/重映发行记录，忽略："
@@ -595,9 +604,7 @@ class CinemaMovieSubscribe(_PluginBase):
                     )
                     continue
                 region_releases.append(candidate)
-            original_release = self.__first_original_release(region_releases)
-            if original_release:
-                original_releases.append(original_release)
+            original_releases.extend(self.__first_original_releases(region_releases))
 
         matched = []
         for item in original_releases:
@@ -609,19 +616,34 @@ class CinemaMovieSubscribe(_PluginBase):
         matched.sort(key=lambda item: item.get("release_date") or "")
         return matched[0]
 
-    def __first_original_release(self, releases: List[dict]) -> Optional[dict]:
-        if not releases:
-            return None
-        return sorted(releases, key=lambda item: item.get("release_date") or "")[0]
-
     @staticmethod
-    def __is_rerelease(release: dict) -> bool:
+    def __first_original_releases(releases: List[dict]) -> List[dict]:
+        if not releases:
+            return []
+        originals: Dict[int, dict] = {}
+        for item in sorted(releases, key=lambda item: (item.get("release_date") or "", item.get("type") or 0)):
+            rtype = item.get("type")
+            if rtype not in originals:
+                originals[rtype] = item
+        return list(originals.values())
+
+    def __is_rerelease(self, detail: dict, release: dict) -> bool:
+        if not self._exclude_rerelease:
+            return False
+
         note = release.get("note") or ""
-        return bool(note and re.search(
+        if note and re.search(
             r"重映|复映|重发|重上|重制|修复|周年|纪念|re[-\s]?release|rerelease|restor|remaster|anniversary|4k",
             note,
             re.IGNORECASE,
-        ))
+        ):
+            return True
+
+        original_date = self.__parse_date(detail.get("release_date") or "")
+        current_date = self.__parse_date(release.get("release_date") or "")
+        if not self._max_release_year_gap or not original_date or not current_date:
+            return False
+        return current_date.year - original_date.year > self._max_release_year_gap
 
     def __media_exists(self, mediainfo: MediaInfo) -> Tuple[bool, str]:
         servers = self._emby_servers or [None]
@@ -659,6 +681,20 @@ class CinemaMovieSubscribe(_PluginBase):
             "message": message,
             "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
+
+    def __processed_keys(self, history: List[dict]) -> set:
+        processed = {str(item) for item in (self.get_data(self._processed_key) or []) if str(item).strip()}
+        processed.update(
+            str(item.get("key")) for item in history
+            if item.get("action") in self._processed_actions and item.get("key")
+        )
+        return processed
+
+    def __save_processed_keys(self, processed: set):
+        self.save_data(
+            self._processed_key,
+            sorted(processed, key=lambda item: (0, int(item)) if item.isdigit() else (1, item)),
+        )
 
     @staticmethod
     def __poster_image(mediainfo: MediaInfo) -> str:
@@ -787,6 +823,8 @@ class CinemaMovieSubscribe(_PluginBase):
             "include": self._include,
             "exclude": self._exclude,
             "include_limited": self._include_limited,
+            "exclude_rerelease": self._exclude_rerelease,
+            "max_release_year_gap": self._max_release_year_gap,
             "emby_servers": self._emby_servers,
         })
 
@@ -891,12 +929,17 @@ class CinemaMovieSubscribe(_PluginBase):
             return None
 
     @staticmethod
-    def __as_list(value) -> List[str]:
+    def __as_list(value, upper: bool = True) -> List[str]:
         if not value:
             return []
+
+        def normalize(item) -> str:
+            text = str(item).strip()
+            return text.upper() if upper else text
+
         if isinstance(value, list):
-            return [str(item).strip().upper() for item in value if str(item).strip()]
-        return [item.strip().upper() for item in str(value).split(",") if item.strip()]
+            return [normalize(item) for item in value if str(item).strip()]
+        return [normalize(item) for item in str(value).split(",") if item.strip()]
 
     def __valid_genres(self, value) -> List[str]:
         genres = []

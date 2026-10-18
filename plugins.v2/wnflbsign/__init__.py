@@ -30,8 +30,8 @@ class AuthError(SignError):
 class WnflbSign(_PluginBase):
     plugin_name = "福利吧自动签到"
     plugin_desc = "福利吧每日签到，支持 Cookie 与账号密码登录、积分统计、签到日历和结果通知。"
-    plugin_icon = "https://raw.githubusercontent.com/wenDPwen/MoviePilot-Plugins/main/icons/movie.jpg"
-    plugin_version = "1.0.3"
+    plugin_icon = "https://raw.githubusercontent.com/wenDPwen/MoviePilot-Plugins/main/icons/wnflbsign.png"
+    plugin_version = "1.0.4"
     plugin_author = "wen"
     author_url = "https://github.com/wenDPwen"
     author_icon = "https://raw.githubusercontent.com/wenDPwen/MoviePilot-Plugins/main/icons/author.jpg"

@@ -28,8 +28,8 @@ class AuthError(SignError):
 class SunnySign(_PluginBase):
     plugin_name = "Sunny签到"
     plugin_desc = "SunnyPT 自动签到，支持 Cookie 与账号密码、魔力奖励统计、签到日历和通知。"
-    plugin_icon = "https://sunnypt.top/images/common/logo-light.png"
-    plugin_version = "1.0.1"
+    plugin_icon = "https://raw.githubusercontent.com/wenDPwen/MoviePilot-Plugins/main/icons/sunny-logo.png"
+    plugin_version = "1.0.2"
     plugin_author = "wen"
     author_url = "https://github.com/wenDPwen"
     author_icon = "https://raw.githubusercontent.com/wenDPwen/MoviePilot-Plugins/main/icons/author.jpg"

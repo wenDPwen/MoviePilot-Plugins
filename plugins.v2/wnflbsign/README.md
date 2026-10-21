@@ -2,6 +2,8 @@
 
 MoviePilot V2 插件，固定站点 `https://www.wnflb2023.com`，适配 Discuz! X3.4 的 `fx_checkin` 签到插件。独立安装，不依赖帧影插件。
 
+v1.0.5：图标改用站点原版方形拇指 favicon，仅转换为 PNG，避免横版文字 Logo 在插件卡片中被裁切；登录与签到逻辑不变。
+
 ## 功能
 
 - Cookie 优先，缺失/失效时使用论坛用户名、密码及可选安全问题登录。

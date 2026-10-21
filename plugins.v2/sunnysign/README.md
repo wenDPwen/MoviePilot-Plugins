@@ -2,7 +2,7 @@
 
 MoviePilot V2 插件，固定适配 `https://sunnypt.top`，使用网站公开前端当前调用的签到协议。
 
-v1.0.1：名称统一为「Sunny签到」，图标直接引用站点原版太阳 Logo `https://sunnypt.top/images/common/logo-light.png`，仓库内保留原始图标备份。签到与登录逻辑不变。
+v1.0.2：名称为「Sunny签到」，站点原版太阳 Logo 改用仓库 `icons/sunny-logo.png`，避免站点直链加载失败，并以新路径避开旧缓存。签到与登录逻辑不变。
 
 ## 功能
 

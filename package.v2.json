@@ -1,4 +1,18 @@
 {
+  "SunnySign": {
+    "name": "Sunny签到",
+    "description": "SunnyPT 每日签到，支持 Cookie 优先与自动保存、账号密码后备登录、魔力奖励、绿色签到日历和通知。",
+    "labels": "SunnyPT,签到,魔力,Cookie",
+    "version": "1.0.1",
+    "icon": "https://sunnypt.top/images/common/logo-light.png",
+    "author": "wen",
+    "author_icon": "https://raw.githubusercontent.com/wenDPwen/MoviePilot-Plugins/main/icons/author.jpg",
+    "level": 2,
+    "history": {
+      "v1.0.1": "名称统一为 Sunny签到，直接引用 SunnyPT 站点原版太阳 Logo，避免未发布的仓库图标链接无法显示。",
+      "v1.0.0": "初始版本：Cookie 优先、账号密码登录并自动回填 Cookie、定时签到与状态复查、今日魔力奖励、绿色签到日历和通知；不自动补签。"
+    }
+  },
   "WnflbSign": {
     "name": "福利吧自动签到",
     "description": "福利吧论坛每日签到，支持 Cookie 自动保存、账号密码和安全问题登录、福利统计、绿色签到日历和结果通知。",

@@ -6,3 +6,4 @@
 | --- | --- |
 | `framehdrsign.jpg` | https://framehdr.com/uploads/favicon/apple-touch-icon.jpg （首页声明的站点图标） |
 | `wnflbsign.png` | https://www.wnflb2023.com/static/image/common/logo.png （论坛首页 Logo） |
+| `sunnysign.png` | https://sunnypt.top/images/common/logo-light.png （站点原版太阳 Logo，获取于 2026-10-21） |
